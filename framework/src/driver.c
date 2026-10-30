@@ -392,6 +392,31 @@ static int column_calculation(int label,
                                   atm_column.level_temperature,
                                   atm_column.emissivity,
                                   flux_up, flux_down));
+
+        /*Vertically integrated clear-clean-sky optical depth (gas + rayleigh), summed
+          over all layers.  Only available when the optics live in host memory.*/
+        if (optics_total.device == HOST_ONLY)
+        {
+            int const n = optics_total.grid.n;
+            fp_t * tau_z = (fp_t *)malloc(sizeof(*tau_z)*n);
+            int j;
+            for (j=0; j<n; ++j)
+            {
+                tau_z[j] = 0.;
+            }
+            int k;
+            for (k=0; k<optics_total.num_layers; ++k)
+            {
+                for (j=0; j<n; ++j)
+                {
+                    tau_z[j] += optics_total.tau[k*n + j];
+                }
+            }
+            write_output(output, VERTICALLY_INTEGRATED_OPTICAL_DEPTH, tau_z, time_index,
+                         column_index);
+            free(tau_z);
+        }
+
         ids[UP_TOA] = RLUTCSAF;
         ids[UP_SURFACE] = RLUSCSAF;
         ids[UP_USER_LEVEL] = RLUCSAF_USER_LEVEL;
@@ -725,16 +750,16 @@ static int driver(Atmosphere_t const atm, /*Atmospheric state.*/
                     case H2O:
                         write_output(output, H2O_VMR, atm_column.ppmv[j], t, i);
                         break;
-                    case O3_VMR:
+                    case O3:
                         write_output(output, O3_VMR, atm_column.ppmv[j], t, i);
                         break;
-                    case CH4_VMR:
+                    case CH4:
                         write_output(output, CH4_VMR, atm_column.ppmv[j], t, i);
                         break;
-                    case CO2_VMR:
+                    case CO2:
                         write_output(output, CO2_VMR, atm_column.ppmv[j], t, i);
                         break;
-                    case N2O_VMR:
+                    case N2O:
                         write_output(output, N2O_VMR, atm_column.ppmv[j], t, i);
                         break;
                 }

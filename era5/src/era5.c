@@ -877,13 +877,16 @@ void create_flux_file(Output_t **output, char const * const filepath,
     int dims_ts[3] = {dimensions[0], dimensions[2], dimensions[3]};
     add_variable(file, "ts", 3, dims_ts, "surface_temperature", "K", SURFACE_TEMPERATURE);
     dimensions[1] = LAYER; dimensions[2] = LATITUDE; dimensions[3] = LONGITUDE;
-    add_variable(file, "t_layer", 4, dimensions, "air_layer_temperature", "mb", LAYER_TEMPERATURE);
+    add_variable(file, "t_layer", 4, dimensions, "air_layer_temperature", "K", LAYER_TEMPERATURE);
     int num_dimensions = 4;
     if (integrated)
     {
         num_dimensions = 3;
     }
     dimensions[1] = LATITUDE; dimensions[2] = LONGITUDE; dimensions[3] = LW_WAVENUMBER;
+    add_variable(file, "tau_z", 4, dimensions,
+                 "clear_sky_aerosol_free_integrated_optical_depth", "1",
+                 VERTICALLY_INTEGRATED_OPTICAL_DEPTH);
     add_variable(file, "rldsaf", num_dimensions, dimensions,
                  "downwelling_surface_aerosol_free_longwave_flux_in_air", "W m-2", RLDSAF);
     add_variable(file, "rlusaf", num_dimensions, dimensions,
@@ -1007,6 +1010,7 @@ void write_output(Output_t * output, Variables_t id, fp_t const * data, int time
             start[0] = time; start[1] = lat; start[2] = lon; start[3] = 0;
             count[0] = 1; count[1] = 1; count[2] = 1; count[3] = 1;
 	    break;
+        case VERTICALLY_INTEGRATED_OPTICAL_DEPTH:
         case RLDSAF:
         case RLUSAF:
         case RLUTAF:
