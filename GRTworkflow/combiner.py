@@ -94,6 +94,8 @@ def main():
         out.variables["lon"][:] = lon_full
         out.setncatts({k: first.getncattr(k) for k in first.ncattrs()
                        if k not in ("x_start", "x_stop")})
+        out.setncattr("lw_calculation_resolution_cm-1", round(dw, 6))
+        out.setncattr("lw_output_resolution_cm-1", round(dw*factor, 6))
 
     # Assemble one variable at a time in memory and write it in a single call.
     # Writing longitude slices straight into the compressed file is very slow,
