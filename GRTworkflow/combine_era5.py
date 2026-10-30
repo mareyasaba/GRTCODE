@@ -79,26 +79,46 @@ def main():
             new.setncatts({k: var.getncattr(k) for k in var.ncattrs() if k != "_FillValue"})
             if "lon" not in var.dimensions and name != LW:
                 new[:] = var[:]
+        lon_full = np.full(nlon, np.nan)
+        for path in pieces:
+            with Dataset(path) as piece:
+                x0 = int(piece.getncattr("x_start"))
+                lon_piece = piece.variables["lon"][:]
+                lon_full[x0:x0+lon_piece.size] = lon_piece
         out.variables[LW][:] = rebin(w, 0, factor, False)
+        out.variables["lon"][:] = lon_full
         out.setncatts({k: first.getncattr(k) for k in first.ncattrs()
                        if k not in ("x_start", "x_stop")})
 
+    # Assemble one variable at a time in memory and write it in a single call.
+    # Writing longitude slices straight into the compressed file is very slow,
+    # because every slice rewrites many compressed chunks.
     covered = np.zeros(nlon, dtype=bool)
-    for path in pieces:
-        with Dataset(path) as piece:
-            x0 = int(piece.getncattr("x_start"))
-            n = len(piece.dimensions["lon"])
-            covered[x0:x0+n] = True
-            print(f"{path}: longitudes {x0}-{x0+n-1}")
-            for name, var in piece.variables.items():
-                if name not in out.variables or "lon" not in var.dimensions:
-                    continue
-                data = var[:].astype("f8").filled(np.nan) if np.ma.isMA(var[:]) else var[:].astype("f8")
-                if LW in var.dimensions:
-                    data = rebin(data, var.dimensions.index(LW), factor, name in OPTICAL_DEPTHS)
-                index = [slice(None)]*data.ndim
-                index[var.dimensions.index("lon")] = slice(x0, x0+n)
-                out.variables[name][tuple(index)] = data
+    handles = [Dataset(path) for path in pieces]
+    for h in handles:
+        x0 = int(h.getncattr("x_start"))
+        covered[x0:x0+len(h.dimensions["lon"])] = True
+    for name, outvar in out.variables.items():
+        if "lon" not in outvar.dimensions or name == "lon":
+            continue
+        print(f"{name}: assembling {len(handles)} pieces")
+        full = np.full(outvar.shape, np.nan, dtype="f4")
+        lon_axis = outvar.dimensions.index("lon")
+        for h in handles:
+            var = h.variables[name]
+            x0 = int(h.getncattr("x_start"))
+            n = len(h.dimensions["lon"])
+            data = var[:]
+            data = data.astype("f8").filled(np.nan) if np.ma.isMA(data) else data.astype("f8")
+            if LW in var.dimensions:
+                data = rebin(data, var.dimensions.index(LW), factor, name in OPTICAL_DEPTHS)
+            index = [slice(None)]*data.ndim
+            index[lon_axis] = slice(x0, x0+n)
+            full[tuple(index)] = data
+        outvar[:] = full
+        del full
+    for h in handles:
+        h.close()
     out.close()
 
     if not covered.all():

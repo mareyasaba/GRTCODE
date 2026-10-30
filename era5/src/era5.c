@@ -775,11 +775,11 @@ static int add_variable(Output_t * output, char * name, int num_dimensions,
 #endif
     int dimids[4];
     int i;
-    for (i=0; i<4; ++i)
+    for (i=0; i<num_dimensions; ++i)
     {
         dimids[i] = output->dimid[dimensions[i]];
     }
-    nc_catch(nc_def_var(output->ncid, name, type, 4, dimids, &(output->varid[id])));
+    nc_catch(nc_def_var(output->ncid, name, type, num_dimensions, dimids, &(output->varid[id])));
     nc_catch(nc_put_att_text(output->ncid, output->varid[id], "standard_name",
                              strlen(standard_name), standard_name));
     nc_catch(nc_put_att_text(output->ncid, output->varid[id], "units",

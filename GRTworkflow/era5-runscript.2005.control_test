@@ -1,0 +1,71 @@
+#!/bin/bash -ex
+
+#SBATCH --account=gfdl_a 
+#SBATCH --partition=batch
+#SBATCH --clusters=c5
+#SBATCH --qos=normal
+#SBATCH --nodes=48
+#SBATCH --time=240
+
+set -o pipefail
+
+# Load the software environment.
+source /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/environment.sh
+
+# Create a work directory and go there.
+mkdir -p /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/control_test
+cd /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/control_test
+touch /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/run-era5-logfile-2005-control_test
+
+# Run GRTCODE.
+export OMP_NUM_THREADS=128
+for index in {1..48}; do
+  srun -v --nodes=1 --ntasks-per-node=1 --cpus-per-task=128 \
+    /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/build/era5 \
+    /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/HITRAN_files/hitran2016.par \
+    /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/solar_flux/solar_flux.csv \
+    /gpfs/f5/gfdl_m/scratch/Mareya.Saba/era5_inputs/2005-era5.nc \
+    /gpfs/f5/gfdl_m/scratch/Mareya.Saba/GHG/control.nc \
+    -clean \
+    -year 2005 \
+    -H2O -CO2 -O3 -N2O -CH4 \
+    -h2o-ctm /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/water_vapor_continuum \
+    -o3-ctm /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/ozone_continuum/ozone_continuum.csv \
+    -HFC-134a-eq /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/cfc_cross_sections/HFC-134a_absorption_cross_sections.csv \
+    -CFC-12-eq /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/cfc_cross_sections/CFC-12_absorption_cross_sections.csv \
+    -N2-N2 /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/collision_induced_absorption/N2-N2.csv \
+    -O2-N2 /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/collision_induced_absorption/O2-N2.csv \
+    -O2-O2 /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/collision_induced_absorption/O2-O2.csv \
+    -x $(( ($index-1)*(144/48) )) \
+    -X $(( ($index*(144/48)-1) )) \
+    -o 2005.era5-fluxes.nc.$index \
+    -beta-path /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/clouds/beta_distribution.nc \
+    -ice-path /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/cloud_optics/lbl_pade_ice_lw_solid_column_severlyroughen_gamma_aeq1_thick.nc \
+    -liquid-path /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/../grtcode-data/cloud_optics/lbl_pade_liq_lw_mie_gamma_aeq12_thick.nc \
+    -flux-at-level 14 \
+    -r-lw 1 \
+    -r-sw 10\
+    -ghg_start_year 1750 \
+    |& tee 2005.era5.log.$index &
+
+done
+wait
+
+# Every node must have produced its piece; otherwise stop before combining.
+for index in {1..48}; do
+  if [ ! -s 2005.era5-fluxes.nc.$index ]; then
+    echo "GRTCODE failed for piece $index. See /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/control_test/2005.era5.log.$index" > /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/run-era5-logfile-2005-control_test
+    exit 1
+  fi
+done
+echo "Finished ERA5 2005.  Combining the output." > /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/run-era5-logfile-2005-control_test
+
+# Combine the pieces into one file (all variables, tau_z included, 1 cm-1 longwave grid).
+module load cray-python/3.11.5
+srun -v --nodes=1 --ntasks-per-node=1 --cpus-per-task=16   python3 /gpfs/f5/gfdl_m/scratch/Mareya.Saba/LBL_2026/GRTCODE/GRTworkflow/combine_era5.py   --output /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/2005.control_test-era5.nc   /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/control_test/2005.era5-fluxes.nc.*   |& tee /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/control_test/log-combine-2005
+echo "Output located at: /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/2005.control_test-era5.nc" > /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/run-era5-logfile-2005-control_test
+
+# Delete the pieces only after a successful combine (set -e and pipefail stop the script otherwise).
+for index in {1..48}; do
+  rm /gpfs/f5/gfdl_m/scratch/Mareya.Saba/work/grtcode-era5/control_test/2005.era5-fluxes.nc.$index
+done
