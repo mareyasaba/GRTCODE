@@ -14,13 +14,13 @@ beta_distribution_data="$grtcode_input_data/clouds/beta_distribution.nc"
 hfc134="$grtcode_input_data/cfc_cross_sections/HFC-134a_absorption_cross_sections.csv"
 cfc12="$grtcode_input_data/cfc_cross_sections/CFC-12_absorption_cross_sections.csv"
 cluster="c5"
-era5_data="/gpfs/f5/gfdl_m/world-shared/David.Paynter/line-by-line/run/era5"
+era5_data="/gpfs/f5/gfdl_m/scratch/Jing.Feng/line-by-line/run/era5_coarse"
 ghg_path="/gpfs/f5/gfdl_m/world-shared/Jing.Feng/GHG/annual_mean_gas_data.nc"
 hitran_par_data="$grtcode_input_data/HITRAN_files/hitran2016.par"
 h2o_continuum="$grtcode_input_data/water_vapor_continuum"
 ice_cloud_parameterization_data="$grtcode_input_data/cloud_optics/lbl_pade_ice_lw_solid_column_severlyroughen_gamma_aeq1_thick.nc"
 liquid_cloud_parameterization_data="$grtcode_input_data/cloud_optics/lbl_pade_liq_lw_mie_gamma_aeq12_thick.nc"
-nodes="48"  # must divide nlon
+nodes="${GRT_NODES:-24}"  # must divide the number of ERA5 longitudes (24 works for 48 and 144)
 n2_n2="$grtcode_input_data/collision_induced_absorption/N2-N2.csv"
 o2_n2="$grtcode_input_data/collision_induced_absorption/O2-N2.csv"
 o2_o2="$grtcode_input_data/collision_induced_absorption/O2-O2.csv"
@@ -28,10 +28,9 @@ o3_continuum="$grtcode_input_data/ozone_continuum/ozone_continuum.csv"
 partition="batch"
 queue="normal"
 solar_flux_data="$grtcode_input_data/solar_flux/solar_flux.csv"
-time_in_minutes="240"  # ~1 cm-1 runs; use ~720 for -r-lw 0.1
+time_in_minutes="${GRT_TIME_MINUTES:-240}"
 threads="128"
-nlon="144"  # number of longitudes in the ERA5 input (144 for run/era5, 48 for era5_coarse)
-lw_resolution="1"  # longwave spectral resolution [cm-1]; 0.1 is ~10x slower
+lw_resolution="${GRT_LW_RESOLUTION:-0.1}"  # longwave spectral resolution [cm-1]
 
 # Handle command line arguments.
 argument_list="$0 [-h|--help] [-p <path to grtcode repository>] year era5_data ghg_path name_tag"
@@ -88,6 +87,21 @@ if [ $counter -lt 1 ]; then
   echo "Usage: $argument_list"
   exit 1
 fi
+# Number of longitudes in the ERA5 input (48 for era5_coarse, 144 for the full grid).
+era5_file="$era5_data/$year-era5.nc"
+if ! command -v ncdump > /dev/null; then
+  echo "Error: ncdump not found (module load cray-netcdf)."
+  exit 1
+fi
+nlon="$( ncdump -h $era5_file | awk '$1 == "lon" && $2 == "=" {print $3}' )"
+if [ -z "$nlon" ]; then
+  echo "Error: could not read the lon dimension from $era5_file."
+  exit 1
+fi
+if [ $(( nlon % nodes )) -ne 0 ]; then
+  echo "Error: $nodes nodes do not divide the $nlon longitudes in $era5_file."
+  exit 1
+fi
 executable="$grtcode_repository/build/era5"
 work_directory="/gpfs/f5/gfdl_m/scratch/$USER/work/grtcode-era5"
 log="$work_directory/run-era5-logfile-$year-$name_tag"
@@ -140,7 +154,7 @@ for index in {1..$nodes}; do
     -beta-path $beta_distribution_data \\
     -ice-path $ice_cloud_parameterization_data \\
     -liquid-path $liquid_cloud_parameterization_data \\
-    -flux-at-level 14 \\
+    -flux-at-level 13 \\
     -r-lw $lw_resolution \\
     -r-sw 10\\
     -ghg_start_year 1750 \\
@@ -158,14 +172,12 @@ for index in {1..$nodes}; do
 done
 echo "Finished ERA5 $year.  Combining the output." > $log
 
-# Combine the pieces into one file (all variables, tau_z included, 1 cm-1 longwave grid).
+# Combine the pieces into one file on a 1 cm-1 longwave grid.
 module load cray-python/3.11.5
 srun -v --nodes=1 --ntasks-per-node=1 --cpus-per-task=16 \
-  python3 $workflow_home/combine_era5.py \
-  --output ${work_directory}/${year}.${name_tag}-era5.nc \
-  ${work_directory}/${name_tag}/$year.era5-fluxes.nc.* \
+  python3 -u $workflow_home/combiner.py --workdir "$work_directory" --year "$year" --nametag "${name_tag}" \
   |& tee ${work_directory}/${name_tag}/log-combine-$year
-echo "Output located at: ${work_directory}/${year}.${name_tag}-era5.nc" > $log
+echo "Output located at: $work_directory/${year}.${name_tag}-cleansky-integrated.nc" > $log
 
 # Delete the pieces only after a successful combine (set -e and pipefail stop the script otherwise).
 for index in {1..$nodes}; do

@@ -13,15 +13,15 @@ workdir="$(readlink -f "${script_dir}/..")"
 # Define experiment settings
 # ------------------------------------------------------------
 # Directory containing greenhouse gas input NetCDF files
-ghg_path="/gpfs/f5/gfdl_m/scratch/$USER/GHG"
+ghg_path="${GRT_GHG_PATH:-/gpfs/f5/gfdl_m/world-shared/Jing.Feng/GHG}"
 
 # ERA5 input directory (choose one of the options)
-# 144x90 grid (set nlon="144" in run-era5.sh); era5_coarse is 48x30 (nlon="48").
-# 2025 must come from a complete 12-month file; the shared 2025 files only hold 6 months.
-era5_data="/gpfs/f5/gfdl_m/world-shared/David.Paynter/line-by-line/run/era5"
+# Options: era5_coarse, era5_coarse_noh2o, era5_fo3, era5_fo3strat (48x30), or a full
+# 144x90 directory; run-era5.sh reads the grid size from the files.
+era5_data="${GRT_ERA5_DATA:-/gpfs/f5/gfdl_m/scratch/Jing.Feng/line-by-line/run/era5_coarse}"
 
 # List of experiments to run (see below for available options)
-exps=(control)
+exps=(${GRT_EXPS:-PI control co2_PI ch4_PI n2o_PI cfc12eq_PI hfc134aeq_PI})
 # ------------------------------------------------------------
 # Available experiment options for exps:
 # ------------------------------------------------------------
@@ -47,7 +47,9 @@ runscript="${script_dir}/run-era5.sh"
 # Loop over years and experiments
 # ------------------------------------------------------------
 
-for year in $(seq 2000 2025); do
+# Years to run (override with e.g. GRT_YEARS="2000 2025").
+read first_year last_year <<< "${GRT_YEARS:-2001 2024}"
+for year in $(seq $first_year $last_year); do
   for exp in "${exps[@]}"; do
     name_tag="${exp}"  # Unique output tag for this configuration
 # ------------------------------------------------------------

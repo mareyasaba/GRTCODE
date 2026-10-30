@@ -1,17 +1,20 @@
 """Append a 2025 row to the GRTCODE greenhouse-gas file using NOAA GML observed growth.
 
 CO2, CH4 and N2O: file_2024 * (NOAA_2025 / NOAA_2024), so the file's own units and
-baseline are kept and only NOAA's observed 2024->2025 growth is applied.
+baseline are kept and only NOAA's observed 2024->2025 growth is applied.  A gas that
+is held fixed in the file (same value in 2023 and 2024, e.g. CO2 in co2_PI or
+co2_2xPI) keeps its 2024 value, so every experiment file can be extended this way.
 cfc12eq and hfc134aeq: NOAA does not publish these equivalents, so they are
 extrapolated linearly from the file's 2023->2024 change.
 Any other variable on the time axis repeats its 2024 value.
 
 Usage (on a GAEA login node, which has internet):
-    python3 extend_ghg_2025.py <input annual_mean_gas_data.nc> <output .nc>
+    python3 extend_ghg_2025.py <input experiment GHG file .nc> <output .nc>
 """
 import sys
 import urllib.request
 
+import numpy as np
 import xarray as xr
 
 NOAA = {
@@ -45,6 +48,9 @@ def main(src, dst):
 
     for gas, url in NOAA.items():
         if gas not in ds:
+            continue
+        if np.allclose(ds[gas].isel(time=-1), ds[gas].isel(time=-2)):
+            print(f"{gas}: held fixed in this file, keeping {float(ds[gas][-1].squeeze()):.6g}")
             continue
         noaa = noaa_annual_means(url)
         if 2025 not in noaa:
