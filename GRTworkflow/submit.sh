@@ -47,11 +47,13 @@ runscript="${script_dir}/run-era5.sh"
 # Loop over years and experiments
 # ------------------------------------------------------------
 
+name_suffix="${GRT_NAME_SUFFIX:-}"
+
 # Years to run (override with e.g. GRT_YEARS="2000 2025").
 read first_year last_year <<< "${GRT_YEARS:-2001 2024}"
 for year in $(seq $first_year $last_year); do
   for exp in "${exps[@]}"; do
-    name_tag="${exp}"  # Unique output tag for this configuration
+    name_tag="${exp}${name_suffix}"  # Unique output tag for this configuration
 # ------------------------------------------------------------
 # Do not change below:
 # ------------------------------------------------------------
