@@ -73,7 +73,8 @@ def main():
                 size = nlon
             elif name == LW:
                 size = len(dim) // factor
-            out.createDimension(name, None if dim.isunlimited() else size)
+            # time is the record dimension, so yearly files can be joined with ncrcat.
+            out.createDimension(name, None if name == "time" or dim.isunlimited() else size)
 
         for name, var in first.variables.items():
             if any(d not in out.dimensions for d in var.dimensions):
