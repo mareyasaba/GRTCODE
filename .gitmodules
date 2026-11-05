@@ -1,3 +1,7 @@
 [submodule "dependencies/clouds-lib"]
 	path = dependencies/clouds-lib
 	url = https://github.com/menzel-gfdl/clouds-lib.git
+[submodule "era5-tools"]
+	path = era5-tools
+	url = https://github.com/mareyasaba/era5-tools.git
+	branch = fix-new-cds-pipeline
