@@ -47,3 +47,9 @@ longwave/test/test_longwave
 shortwave/test/test_shortwave
 *.mod
 grtcode-data/*
+# job files from GRTworkflow runs (now written to work/grtcode-era5/jobs)
+era5-runscript.*
+slurm-*.out
+# editor / python leftovers
+*.swp
+__pycache__/
