@@ -40,6 +40,6 @@ for f in "${files[@]}"; do
 done
 
 out="${name_tag}_${first_year}_${last_year}-cleansky-integrated.nc"
-ncrcat -O -4 -L 1 "${files[@]}" "$out.tmp"
+ncrcat -O "${files[@]}" "$out.tmp"
 mv "$out.tmp" "$out"
 echo "merged: $work_directory/$out"
