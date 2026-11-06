@@ -106,8 +106,12 @@ executable="$grtcode_repository/build/era5"
 work_directory="/gpfs/f5/gfdl_m/scratch/$USER/work/grtcode-era5"
 log="$work_directory/run-era5-logfile-$year-$name_tag"
 
+# Runscripts and slurm logs go in one folder instead of wherever this script was started.
+job_directory="${GRT_JOB_DIR:-$work_directory/jobs}"
+mkdir -p "$job_directory"
+
 # Create the runscript.
-runscript="era5-runscript.$year.$name_tag"
+runscript="$job_directory/era5-runscript.$year.$name_tag"
 [ -f "$runscript" ] && rm "$runscript"
 cat <<EOF >> $runscript
 #!/bin/bash -ex
@@ -183,13 +187,26 @@ echo "Output located at: $work_directory/${year}.${name_tag}-cleansky-integrated
 for index in {1..$nodes}; do
   rm ${work_directory}/${name_tag}/$year.era5-fluxes.nc.\$index
 done
+
+# Bundle the per-node logs and the combine log into one archive (set GRT_KEEP_LOGS=1 to skip).
+# Only reached after a successful run, so a failed year keeps its logs as plain files.
+if [ "${GRT_KEEP_LOGS:-0}" != "1" ]; then
+  tar czf logs-$year.tgz $year.era5.log.* log-combine-$year
+  rm $year.era5.log.* log-combine-$year
+fi
 EOF
 
 # Make the runscript executable.
 chmod 755 $runscript
 
-# Submit the runscript to slurm.
-sbatch $runscript
+# Submit the runscript to slurm; its slurm log goes next to it in the job folder.
+jobid="$( sbatch --parsable -o "$job_directory/slurm-$year.$name_tag-%j.out" $runscript )"
+jobid="${jobid%%;*}"
+echo "Submitted job $jobid ($year $name_tag). Slurm log: $job_directory/slurm-$year.$name_tag-$jobid.out"
+# submit.sh reads the job ids from here to start the merge once every year has finished.
+if [ -n "$GRT_JOBID_FILE" ]; then
+  echo "$jobid" >> "$GRT_JOBID_FILE"
+fi
 
 # Print the results to the terminal too.
 echo "See output from the job in $log once it finishes."
